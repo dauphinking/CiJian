@@ -66,8 +66,7 @@ workflows:
           failure: true
 
   # 复用 Eyecoming 已有的 App Store Connect integration（bihuijin）+ Team 7DHNZZZT49。
-  # 首次发布前需在 App Store Connect 注册 bundle id com.biditech.CiJian 并创建 App 记录，
-  # 否则 fetch-signing-files 会因找不到 App 而失败。
+  # bundle id com.biditech.CiJian 已在 App Store Connect 注册，打 v* 标签即可发布 TestFlight。
   ios-testflight:
     name: CiJian TestFlight Release
     max_build_duration: 60

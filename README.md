@@ -70,11 +70,24 @@ open CiJian.xcodeproj
 
 `ios-build` 不需要任何配置，连上仓库即可跑（`CODE_SIGNING_ALLOWED=NO`，纯编译校验）。
 
-`ios-testflight` 复用 Eyecoming 项目已有的配置：App Store Connect integration **`bihuijin`**、
-Team ID `7DHNZZZT49`、Xcode 26.0，无需重新添加 API Key。
+`ios-testflight` 复用 Eyecoming 项目已有的配置，无需额外准备：
 
-首次发布前只差一步：在 App Store Connect 注册 Bundle ID `com.biditech.CiJian` 并创建对应 App 记录，
-否则 `fetch-signing-files` 会因找不到 App 而失败。
+| 项 | 值 |
+|----|-----|
+| App Store Connect integration | `bihuijin` |
+| Apple Developer Team ID | `7DHNZZZT49` |
+| Bundle ID | `com.biditech.CiJian`（已注册） |
+| Xcode | 26.0 |
+
+发布方式：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+签名证书与 Provisioning Profile 由 `app-store-connect fetch-signing-files --create` 自动获取，
+build 号取 Codemagic 的 `$BUILD_NUMBER`，构建完成后自动提交 TestFlight。
 
 ## 项目结构
 
