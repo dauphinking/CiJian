@@ -98,6 +98,25 @@ workflows:
 
       - name: Fetch signing files
         script: |
+          # use-profiles 是按 bundle id 把 profile 匹配到 target 的：项目里的
+          # PRODUCT_BUNDLE_IDENTIFIER 与 profile 的 bundle id 有任何差异（含大小写）
+          # 都会静默匹配不上，最终在 archive 阶段才报 "requires a provisioning profile"。
+          # 这里提前比对，把它变成一个位置明确的早期失败。
+          PROJECT_BUNDLE_ID=$(
+            xcodebuild -project "$XCODE_PROJECT" \
+                       -scheme "$XCODE_SCHEME" \
+                       -configuration Release \
+                       -showBuildSettings 2>/dev/null \
+            | awk -F' = ' '/ PRODUCT_BUNDLE_IDENTIFIER = /{print $2; exit}'
+          )
+          echo "project  bundle id: '$PROJECT_BUNDLE_ID'"
+          echo "signing  bundle id: '$BUNDLE_ID'"
+          if [ "$PROJECT_BUNDLE_ID" != "$BUNDLE_ID" ]; then
+            echo "ERROR: bundle id 不一致 —— project.yml 的 PRODUCT_BUNDLE_IDENTIFIER"
+            echo "       必须与 codemagic.yaml 的 BUNDLE_ID 完全相同（大小写敏感）。"
+            exit 1
+          fi
+
           # --create：identifier 或 profile 不存在时自动创建
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
@@ -105,7 +124,15 @@ workflows:
             --create
           keychain initialize
           keychain add-certificates
-          xcode-project use-profiles
+
+          xcode-project use-profiles --project "$XCODE_PROJECT"
+
+          # 确认 profile 真的写进了 target，而不是等到 archive 才发现没写进去
+          xcodebuild -project "$XCODE_PROJECT" \
+                     -scheme "$XCODE_SCHEME" \
+                     -configuration Release \
+                     -showBuildSettings 2>/dev/null \
+          | grep -E "PROVISIONING_PROFILE_SPECIFIER|CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM" || true
 
       - name: Build ipa
         script: |
