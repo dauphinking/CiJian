@@ -86,8 +86,13 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-签名证书与 Provisioning Profile 由 `app-store-connect fetch-signing-files --create` 自动获取，
-profile 不存在时会自动创建；build 号取 Codemagic 的 `$BUILD_NUMBER`，构建完成后自动提交 TestFlight。
+签名走 Codemagic 自动签名（`environment.ios_signing`），证书与 Provisioning Profile 由 Codemagic 备妥。
+
+> 不要改成脚本里手动 `app-store-connect fetch-signing-files`：证书私钥无法从 Apple 下载，
+> 手动流程必须自带 `.p12` 私钥，否则只会得到
+> `Cannot save Signing Certificates without certificate private key`。
+
+build 号取 Codemagic 的 `$BUILD_NUMBER`，构建完成后自动提交 TestFlight。
 
 > ⚠️ Bundle ID 大小写敏感。Apple 把 `com.biditech.cijian` 和 `com.biditech.CiJian` 视为两个不同的
 > identifier，改动时 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 与 `codemagic.yaml` 的 `BUNDLE_ID`

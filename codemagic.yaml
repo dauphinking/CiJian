@@ -68,8 +68,11 @@ workflows:
           failure: true
 
   # 复用 Eyecoming 已有的 App Store Connect integration（bihuijin）+ Team 7DHNZZZT49。
-  # 这里不用 environment.ios_signing 自动签名：它在环境准备阶段就要求 profile 已存在，
-  # 缺 profile 会直接失败。改由下面的 fetch-signing-files --create 按需创建。
+  #
+  # 签名走 environment.ios_signing（Codemagic 自动签名），而不是脚本里手动
+  # fetch-signing-files：证书私钥无法从 Apple 下载，手动流程必须自带 .p12 私钥，
+  # 否则只会得到 "Cannot save Signing Certificates without certificate private key"。
+  # 自动签名的私钥由 Codemagic 托管，Eyecoming 用的也是这条路径。
   ios-testflight:
     name: CiJian TestFlight Release
     max_build_duration: 60
@@ -80,6 +83,9 @@ workflows:
 
     environment:
       <<: *env_versions
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.biditech.cijian
 
     triggering:
       events:
@@ -97,7 +103,7 @@ workflows:
           cd $CM_BUILD_DIR
           agvtool new-version -all $BUILD_NUMBER
 
-      - name: Fetch signing files
+      - name: Apply signing settings
         script: |
           # use-profiles 是按 bundle id 把 profile 匹配到 target 的：项目里的
           # PRODUCT_BUNDLE_IDENTIFIER 与 profile 的 bundle id 有任何差异（含大小写）
@@ -118,55 +124,19 @@ workflows:
             exit 1
           fi
 
+          # 证书与 profile 由 environment.ios_signing 在环境准备阶段备妥，
+          # 这里只负责把它们写进 XcodeGen 刚生成出来的项目。
           PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          CERTS_DIR="$HOME/Library/MobileDevice/Certificates"
-          mkdir -p "$PROFILES_DIR" "$CERTS_DIR"
-
-          # 先问一句 Apple 侧到底有什么，避免只能从「什么都没下下来」反推。
-          # 诊断命令一律带 || true：它们只负责提供信息，不参与判定成败。
-          echo "===== Apple 侧的 bundle id ====="
-          app-store-connect list-bundle-ids \
-            --bundle-id-identifier "$BUNDLE_ID" || true
-          echo "===== Apple 侧的 App Store profile ====="
-          app-store-connect list-profiles \
-            --profile-type IOS_APP_STORE || true
-          echo "===== Apple 侧的发布证书 ====="
-          app-store-connect list-certificates \
-            --type IOS_DISTRIBUTION || true
-
-          # --create：identifier 或 profile 不存在时自动创建
-          echo "===== fetch-signing-files ====="
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --platform IOS \
-            --create \
-            --profiles-dir "$PROFILES_DIR" \
-            --certificates-dir "$CERTS_DIR"
-
-          # fetch-signing-files 可能退出码为 0 却一无所获，这里当场核实落盘结果
-          echo "===== 落盘的 profile ====="
+          echo "===== 可用的 profile ====="
           ls -la "$PROFILES_DIR" || true
-          echo "===== 落盘的证书 ====="
-          ls -la "$CERTS_DIR" || true
 
           PROFILE_COUNT=$(ls -1 "$PROFILES_DIR"/*.mobileprovision 2>/dev/null | wc -l | tr -d ' ')
-          CERT_COUNT=$(ls -1 "$CERTS_DIR"/*.p12 2>/dev/null | wc -l | tr -d ' ')
-          echo "profile 数量: $PROFILE_COUNT   证书数量: $CERT_COUNT"
-
           if [ "$PROFILE_COUNT" = "0" ]; then
-            echo "ERROR: fetch-signing-files 退出码为 0，但没有任何 profile 落盘。"
-            echo "       看上面三段 list-* 输出："
-            echo "       - bundle id 为空 → $BUNDLE_ID 没注册，或这把 key 看不到它"
-            echo "       - 证书为空     → 账号下没有 iOS Distribution 证书可用"
-            echo "       - 两者都有     → 多半是 bihuijin 这把 ASC key 权限不足"
-            echo "                        （创建 profile 需要 App Manager 及以上）"
+            echo "ERROR: 自动签名没有准备出任何 profile。"
+            echo "       检查 environment.ios_signing 的 bundle_identifier 是否为 $BUNDLE_ID，"
+            echo "       以及 bihuijin 这把 key 能否访问该 identifier。"
             exit 1
           fi
-
-          keychain initialize
-          keychain add-certificates --certificate "$CERTS_DIR/*.p12"
-          echo "===== keychain 中的签名身份 ====="
-          keychain list-certificates || true
 
           xcode-project use-profiles --project "$XCODE_PROJECT"
 
