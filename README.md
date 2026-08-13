@@ -70,13 +70,11 @@ open CiJian.xcodeproj
 
 `ios-build` 不需要任何配置，连上仓库即可跑（`CODE_SIGNING_ALLOWED=NO`，纯编译校验）。
 
-`ios-testflight` 首次使用前需要：
+`ios-testflight` 复用 Eyecoming 项目已有的配置：App Store Connect integration **`bihuijin`**、
+Team ID `7DHNZZZT49`、Xcode 26.0，无需重新添加 API Key。
 
-1. Codemagic → Teams → Integrations → App Store Connect，添加 API Key，名称填 **`CiJian_ASC`**
-2. App Store Connect 创建 Bundle ID 为 `com.biditech.CiJian` 的 App
-3. `project.yml` 中 `DEVELOPMENT_TEAM` 填入 Apple Developer Team ID
-
-未完成以上步骤时该 workflow 会在签名步骤失败，属预期行为。
+首次发布前只差一步：在 App Store Connect 注册 Bundle ID `com.biditech.CiJian` 并创建对应 App 记录，
+否则 `fetch-signing-files` 会因找不到 App 而失败。
 
 ## 项目结构
 

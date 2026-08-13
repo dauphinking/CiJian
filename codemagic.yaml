@@ -1,6 +1,6 @@
 definitions:
   env_versions: &env_versions
-    xcode: latest
+    xcode: 26.0
     vars:
       XCODE_PROJECT: "CiJian.xcodeproj"
       XCODE_SCHEME: "CiJian"
@@ -65,18 +65,16 @@ workflows:
           success: false
           failure: true
 
-  # 需要先在 Codemagic 控制台完成：
-  #   1. Teams → Integrations → App Store Connect 添加 API Key（名称填 CiJian_ASC）
-  #   2. 在 App Store Connect 创建 bundle id 为 com.biditech.CiJian 的 App
-  #   3. project.yml 里的 DEVELOPMENT_TEAM 填上 Team ID
-  # 未完成前手动触发会在签名步骤失败，属预期行为。
+  # 复用 Eyecoming 已有的 App Store Connect integration（bihuijin）+ Team 7DHNZZZT49。
+  # 首次发布前需在 App Store Connect 注册 bundle id com.biditech.CiJian 并创建 App 记录，
+  # 否则 fetch-signing-files 会因找不到 App 而失败。
   ios-testflight:
     name: CiJian TestFlight Release
     max_build_duration: 60
     instance_type: mac_mini_m2
 
     integrations:
-      app_store_connect: CiJian_ASC
+      app_store_connect: bihuijin
 
     environment:
       <<: *env_versions
@@ -97,7 +95,8 @@ workflows:
 
       - name: Set build number
         script: |
-          agvtool new-version -all "$PROJECT_BUILD_NUMBER"
+          cd $CM_BUILD_DIR
+          agvtool new-version -all $BUILD_NUMBER
 
       - name: Fetch signing files
         script: |
