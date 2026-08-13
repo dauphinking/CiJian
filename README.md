@@ -59,6 +59,25 @@ open CiJian.xcodeproj
 
 > API Key 仅存储在本地设备，不会上传到任何服务器。
 
+## 持续集成（Codemagic）
+
+`codemagic.yaml` 定义了两个 workflow：
+
+| Workflow | 触发条件 | 产物 |
+|----------|----------|------|
+| `ios-build` | push / PR 到 `main`、`claude/*` | 模拟器 `.app` + 构建日志 |
+| `ios-testflight` | 打 `v*` 标签（如 `v1.0.0`） | `.ipa` + 自动上传 TestFlight |
+
+`ios-build` 不需要任何配置，连上仓库即可跑（`CODE_SIGNING_ALLOWED=NO`，纯编译校验）。
+
+`ios-testflight` 首次使用前需要：
+
+1. Codemagic → Teams → Integrations → App Store Connect，添加 API Key，名称填 **`CiJian_ASC`**
+2. App Store Connect 创建 Bundle ID 为 `com.biditech.CiJian` 的 App
+3. `project.yml` 中 `DEVELOPMENT_TEAM` 填入 Apple Developer Team ID
+
+未完成以上步骤时该 workflow 会在签名步骤失败，属预期行为。
+
 ## 项目结构
 
 ```

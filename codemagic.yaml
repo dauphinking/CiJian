@@ -1,35 +1,128 @@
+definitions:
+  env_versions: &env_versions
+    xcode: latest
+    vars:
+      XCODE_PROJECT: "CiJian.xcodeproj"
+      XCODE_SCHEME: "CiJian"
+      BUNDLE_ID: "com.biditech.CiJian"
+
+  scripts:
+    - &install_xcodegen
+      name: Install XcodeGen
+      script: |
+        which xcodegen || brew install xcodegen
+        xcodegen --version
+
+    - &generate_project
+      name: Generate Xcode project
+      script: xcodegen generate --spec project.yml
+
 workflows:
   ios-build:
-    name: CiJian iOS Build
+    name: CiJian iOS Build (Simulator)
     max_build_duration: 30
     instance_type: mac_mini_m2
 
-    environment:
-      xcode: 15.4
-      cocoapods: default
-      vars:
-        XCODE_SCHEME: "CiJian"
-        BUNDLE_ID: "com.biditech.CiJian"
+    environment: *env_versions
+
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+        - pattern: "claude/*"
+          include: true
+          source: true
+      cancel_previous_builds: true
 
     scripts:
-      - name: Install XcodeGen
-        script: brew install xcodegen
+      - *install_xcodegen
+      - *generate_project
 
-      - name: Generate Xcode project
-        script: xcodegen generate
-
-      - name: Build iOS app
+      - name: Build for iOS Simulator
         script: |
           xcodebuild build \
-            -project CiJian.xcodeproj \
-            -scheme CiJian \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
             -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty
+            | xcbeautify
+
+    artifacts:
+      - build/ios/Build/Products/Debug-iphonesimulator/*.app
+      - /tmp/xcodebuild_logs/*.log
 
     publishing:
+      email:
+        recipients:
+          - dauphinking@gmail.com
+        notify:
+          success: false
+          failure: true
+
+  # 需要先在 Codemagic 控制台完成：
+  #   1. Teams → Integrations → App Store Connect 添加 API Key（名称填 CiJian_ASC）
+  #   2. 在 App Store Connect 创建 bundle id 为 com.biditech.CiJian 的 App
+  #   3. project.yml 里的 DEVELOPMENT_TEAM 填上 Team ID
+  # 未完成前手动触发会在签名步骤失败，属预期行为。
+  ios-testflight:
+    name: CiJian TestFlight Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: CiJian_ASC
+
+    environment:
+      <<: *env_versions
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.biditech.CiJian
+
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "v*"
+          include: true
+
+    scripts:
+      - *install_xcodegen
+      - *generate_project
+
+      - name: Set build number
+        script: |
+          agvtool new-version -all "$PROJECT_BUILD_NUMBER"
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build ipa
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
       email:
         recipients:
           - dauphinking@gmail.com
