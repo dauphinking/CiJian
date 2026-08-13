@@ -76,7 +76,7 @@ open CiJian.xcodeproj
 |----|-----|
 | App Store Connect integration | `bihuijin` |
 | Apple Developer Team ID | `7DHNZZZT49` |
-| Bundle ID | `com.biditech.CiJian`（已注册） |
+| Bundle ID | `com.biditech.cijian`（全小写，与 portal 注册值一致） |
 | Xcode | 26.0 |
 
 发布方式：
@@ -87,7 +87,11 @@ git push origin v1.0.0
 ```
 
 签名证书与 Provisioning Profile 由 `app-store-connect fetch-signing-files --create` 自动获取，
-build 号取 Codemagic 的 `$BUILD_NUMBER`，构建完成后自动提交 TestFlight。
+profile 不存在时会自动创建；build 号取 Codemagic 的 `$BUILD_NUMBER`，构建完成后自动提交 TestFlight。
+
+> ⚠️ Bundle ID 大小写敏感。Apple 把 `com.biditech.cijian` 和 `com.biditech.CiJian` 视为两个不同的
+> identifier，改动时 `project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER` 与 `codemagic.yaml` 的 `BUNDLE_ID`
+> 必须同步。
 
 ## 项目结构
 
