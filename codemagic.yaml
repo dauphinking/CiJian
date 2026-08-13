@@ -1,35 +1,126 @@
+definitions:
+  env_versions: &env_versions
+    xcode: 26.0
+    vars:
+      XCODE_PROJECT: "CiJian.xcodeproj"
+      XCODE_SCHEME: "CiJian"
+      BUNDLE_ID: "com.biditech.CiJian"
+
+  scripts:
+    - &install_xcodegen
+      name: Install XcodeGen
+      script: |
+        which xcodegen || brew install xcodegen
+        xcodegen --version
+
+    - &generate_project
+      name: Generate Xcode project
+      script: xcodegen generate --spec project.yml
+
 workflows:
   ios-build:
-    name: CiJian iOS Build
+    name: CiJian iOS Build (Simulator)
     max_build_duration: 30
     instance_type: mac_mini_m2
 
-    environment:
-      xcode: 15.4
-      cocoapods: default
-      vars:
-        XCODE_SCHEME: "CiJian"
-        BUNDLE_ID: "com.biditech.CiJian"
+    environment: *env_versions
+
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+        - pattern: "claude/*"
+          include: true
+          source: true
+      cancel_previous_builds: true
 
     scripts:
-      - name: Install XcodeGen
-        script: brew install xcodegen
+      - *install_xcodegen
+      - *generate_project
 
-      - name: Generate Xcode project
-        script: xcodegen generate
-
-      - name: Build iOS app
+      - name: Build for iOS Simulator
         script: |
           xcodebuild build \
-            -project CiJian.xcodeproj \
-            -scheme CiJian \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
             -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty
+            | xcbeautify
+
+    artifacts:
+      - build/ios/Build/Products/Debug-iphonesimulator/*.app
+      - /tmp/xcodebuild_logs/*.log
 
     publishing:
+      email:
+        recipients:
+          - dauphinking@gmail.com
+        notify:
+          success: false
+          failure: true
+
+  # 复用 Eyecoming 已有的 App Store Connect integration（bihuijin）+ Team 7DHNZZZT49。
+  # bundle id com.biditech.CiJian 已在 App Store Connect 注册，打 v* 标签即可发布 TestFlight。
+  ios-testflight:
+    name: CiJian TestFlight Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: bihuijin
+
+    environment:
+      <<: *env_versions
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.biditech.CiJian
+
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "v*"
+          include: true
+
+    scripts:
+      - *install_xcodegen
+      - *generate_project
+
+      - name: Set build number
+        script: |
+          cd $CM_BUILD_DIR
+          agvtool new-version -all $BUILD_NUMBER
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build ipa
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
       email:
         recipients:
           - dauphinking@gmail.com
