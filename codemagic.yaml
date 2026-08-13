@@ -118,13 +118,55 @@ workflows:
             exit 1
           fi
 
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          CERTS_DIR="$HOME/Library/MobileDevice/Certificates"
+          mkdir -p "$PROFILES_DIR" "$CERTS_DIR"
+
+          # 先问一句 Apple 侧到底有什么，避免只能从「什么都没下下来」反推。
+          # 诊断命令一律带 || true：它们只负责提供信息，不参与判定成败。
+          echo "===== Apple 侧的 bundle id ====="
+          app-store-connect list-bundle-ids \
+            --bundle-id-identifier "$BUNDLE_ID" || true
+          echo "===== Apple 侧的 App Store profile ====="
+          app-store-connect list-profiles \
+            --profile-type IOS_APP_STORE || true
+          echo "===== Apple 侧的发布证书 ====="
+          app-store-connect list-certificates \
+            --type IOS_DISTRIBUTION || true
+
           # --create：identifier 或 profile 不存在时自动创建
+          echo "===== fetch-signing-files ====="
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --platform IOS \
-            --create
+            --create \
+            --profiles-dir "$PROFILES_DIR" \
+            --certificates-dir "$CERTS_DIR"
+
+          # fetch-signing-files 可能退出码为 0 却一无所获，这里当场核实落盘结果
+          echo "===== 落盘的 profile ====="
+          ls -la "$PROFILES_DIR" || true
+          echo "===== 落盘的证书 ====="
+          ls -la "$CERTS_DIR" || true
+
+          PROFILE_COUNT=$(ls -1 "$PROFILES_DIR"/*.mobileprovision 2>/dev/null | wc -l | tr -d ' ')
+          CERT_COUNT=$(ls -1 "$CERTS_DIR"/*.p12 2>/dev/null | wc -l | tr -d ' ')
+          echo "profile 数量: $PROFILE_COUNT   证书数量: $CERT_COUNT"
+
+          if [ "$PROFILE_COUNT" = "0" ]; then
+            echo "ERROR: fetch-signing-files 退出码为 0，但没有任何 profile 落盘。"
+            echo "       看上面三段 list-* 输出："
+            echo "       - bundle id 为空 → $BUNDLE_ID 没注册，或这把 key 看不到它"
+            echo "       - 证书为空     → 账号下没有 iOS Distribution 证书可用"
+            echo "       - 两者都有     → 多半是 bihuijin 这把 ASC key 权限不足"
+            echo "                        （创建 profile 需要 App Manager 及以上）"
+            exit 1
+          fi
+
           keychain initialize
-          keychain add-certificates
+          keychain add-certificates --certificate "$CERTS_DIR/*.p12"
+          echo "===== keychain 中的签名身份 ====="
+          keychain list-certificates || true
 
           xcode-project use-profiles --project "$XCODE_PROJECT"
 
