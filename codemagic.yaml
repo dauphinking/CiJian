@@ -1,0 +1,114 @@
+workflows:
+  ios-build:
+    name: CiJian iOS Build
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    
+    environment:
+      xcode: 15.4
+      cocoapods: default
+      groups:
+        - app_credentials  # Add API keys in Codemagic UI → Environment variables
+      vars:
+        XCODE_WORKSPACE: "CiJian.xcodeproj"
+        XCODE_SCHEME: "CiJian"
+        BUNDLE_ID: "com.biditech.CiJian"
+      ios_signing:
+        distribution_type: development
+        bundle_identifier: com.biditech.CiJian
+
+    scripts:
+      # Step 1: Install XcodeGen
+      - name: Install XcodeGen
+        script: |
+          brew install xcodegen
+
+      # Step 2: Generate Xcode project from project.yml
+      - name: Generate Xcode project
+        script: |
+          xcodegen generate
+          echo "✅ Xcode project generated"
+
+      # Step 3: Set up code signing (optional, for TestFlight)
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+        ignore_failure: true
+
+      # Step 4: Build the app
+      - name: Build iOS app
+        script: |
+          xcodebuild build \
+            -project CiJian.xcodeproj \
+            -scheme CiJian \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - build/**/*.dSYM
+
+    publishing:
+      email:
+        recipients:
+          - dauphinking@gmail.com
+        notify:
+          success: true
+          failure: true
+
+  # ── Release build (when ready for TestFlight) ──
+  ios-release:
+    name: CiJian Release → TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+
+    environment:
+      xcode: 15.4
+      vars:
+        BUNDLE_ID: "com.biditech.CiJian"
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.biditech.CiJian
+
+    scripts:
+      - name: Install XcodeGen
+        script: brew install xcodegen
+
+      - name: Generate Xcode project
+        script: xcodegen generate
+
+      - name: Set up code signing
+        script: xcode-project use-profiles
+
+      - name: Increment build number
+        script: |
+          LATEST_BUILD=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" || echo 0)
+          agvtool new-version -all $((LATEST_BUILD + 1))
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project CiJian.xcodeproj \
+            --scheme CiJian
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+      email:
+        recipients:
+          - dauphinking@gmail.com
