@@ -83,9 +83,16 @@ workflows:
 
     environment:
       <<: *env_versions
+      # 不用 distribution_type + bundle_identifier 让 Codemagic 去 Apple 侧查找匹配，
+      # 而是直接点名 Teams → Code signing identities 里已上传的文件：
+      #   cijian_appstore —— 从 Apple portal 下载的 cijian.mobileprovision
+      #   bihuijin2       —— 已有的 production 证书（含私钥，Eyecoming 在用的那张）
+      # 名字必须与 Codemagic 里的 reference name 完全一致。
       ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.biditech.cijian
+        provisioning_profiles:
+          - cijian_appstore
+        certificates:
+          - bihuijin2
 
     triggering:
       events:
