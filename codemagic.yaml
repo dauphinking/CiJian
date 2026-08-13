@@ -6,6 +6,7 @@ definitions:
       XCODE_SCHEME: "CiJian"
       # 大小写必须与 Apple Developer portal 上注册的 identifier 完全一致
       BUNDLE_ID: "com.biditech.cijian"
+      TEAM_ID: "7DHNZZZT49"
 
   scripts:
     - &install_xcodegen
@@ -136,10 +137,42 @@ workflows:
 
       - name: Build ipa
         script: |
+          # use-profiles 已经跑过，但它是否真的把 PROVISIONING_PROFILE_SPECIFIER
+          # 写进了 pbxproj 无法保证（写不进去时它不报错，archive 阶段才炸）。
+          # 这里从实际下载到的 profile 里取 UUID，直接作为 build setting 传给 archive，
+          # 不依赖项目文件被改写。UUID 不含空格，可安全放进 --archive-flags。
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE=""
+          for p in "$PROFILE_DIR"/*.mobileprovision; do
+            [ -e "$p" ] || continue
+            APP_ID=$(security cms -D -i "$p" 2>/dev/null \
+                     | plutil -extract Entitlements.application-identifier raw - 2>/dev/null)
+            echo "found profile: $(basename "$p") → $APP_ID"
+            case "$APP_ID" in
+              *".$BUNDLE_ID") PROFILE="$p" ;;
+            esac
+          done
+
+          if [ -z "$PROFILE" ]; then
+            echo "ERROR: 没有找到 $BUNDLE_ID 对应的 provisioning profile。"
+            echo "       上一步 fetch-signing-files 可能没有真正下载/创建成功。"
+            exit 1
+          fi
+
+          PROFILE_UUID=$(security cms -D -i "$PROFILE" | plutil -extract UUID raw -)
+          echo "using profile: $(basename "$PROFILE")  UUID=$PROFILE_UUID"
+
+          ARCHIVE_FLAGS="CODE_SIGN_STYLE=Manual"
+          ARCHIVE_FLAGS="$ARCHIVE_FLAGS DEVELOPMENT_TEAM=$TEAM_ID"
+          ARCHIVE_FLAGS="$ARCHIVE_FLAGS PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
+          ARCHIVE_FLAGS="$ARCHIVE_FLAGS CODE_SIGN_IDENTITY=\"Apple Distribution\""
+          echo "archive flags: $ARCHIVE_FLAGS"
+
           xcode-project build-ipa \
             --project "$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME" \
-            --config Release
+            --config Release \
+            --archive-flags "$ARCHIVE_FLAGS"
 
     artifacts:
       - build/ios/ipa/*.ipa
