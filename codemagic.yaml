@@ -98,11 +98,6 @@ workflows:
       - *install_xcodegen
       - *generate_project
 
-      - name: Set build number
-        script: |
-          cd $CM_BUILD_DIR
-          agvtool new-version -all $BUILD_NUMBER
-
       - name: Apply signing settings
         script: |
           # use-profiles 是按 bundle id 把 profile 匹配到 target 的：项目里的
@@ -174,7 +169,11 @@ workflows:
           PROFILE_UUID=$(security cms -D -i "$PROFILE" | plutil -extract UUID raw -)
           echo "using profile: $(basename "$PROFILE")  UUID=$PROFILE_UUID"
 
-          ARCHIVE_FLAGS="CODE_SIGN_STYLE=Manual"
+          # Info.plist 是自动生成的，agvtool 那套改文件的做法在这里无从下手，
+          # 直接把 build 号作为 build setting 传进去。TestFlight 要求每次上传的
+          # build 号唯一，固定为 1 的话第二次上传就会被拒。
+          ARCHIVE_FLAGS="CURRENT_PROJECT_VERSION=$BUILD_NUMBER"
+          ARCHIVE_FLAGS="$ARCHIVE_FLAGS CODE_SIGN_STYLE=Manual"
           ARCHIVE_FLAGS="$ARCHIVE_FLAGS DEVELOPMENT_TEAM=$TEAM_ID"
           ARCHIVE_FLAGS="$ARCHIVE_FLAGS PROVISIONING_PROFILE_SPECIFIER=$PROFILE_UUID"
           ARCHIVE_FLAGS="$ARCHIVE_FLAGS CODE_SIGN_IDENTITY=\"Apple Distribution\""
