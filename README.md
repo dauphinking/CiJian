@@ -70,7 +70,7 @@ open CiJian.xcodeproj
 
 `ios-build` 不需要任何配置，连上仓库即可跑（`CODE_SIGNING_ALLOWED=NO`，纯编译校验）。
 
-`ios-testflight` 复用 Eyecoming 项目已有的配置，无需额外准备：
+`ios-testflight` 复用 Eyecoming 项目已有的 Codemagic 配置：
 
 | 项 | 值 |
 |----|-----|
@@ -78,6 +78,16 @@ open CiJian.xcodeproj
 | Apple Developer Team ID | `7DHNZZZT49` |
 | Bundle ID | `com.biditech.cijian`（全小写，与 portal 注册值一致） |
 | Xcode | 26.0 |
+
+Apple 侧需要三样东西同时存在，缺任何一样都会在不同阶段失败：
+
+| 位置 | 需要什么 | 缺了会怎样 |
+|------|----------|-----------|
+| Developer portal → Identifiers | Bundle ID `com.biditech.cijian` | 签名阶段找不到可用 identifier |
+| Developer portal → Profiles | 该 ID 的 App Store 类型 profile | `No matching profiles found for bundle identifier` |
+| **App Store Connect → 我的 App** | 绑定该 Bundle ID 的 **App 记录** | 构建全过，上传时 `No suitable application records were found` |
+
+第三项与前两项是彼此独立的 —— 在开发者后台注册标识符**不会**自动创建 App 记录。新建 App 时无需填写商店信息或提交审核，TestFlight 只要求记录存在。
 
 发布方式：
 
